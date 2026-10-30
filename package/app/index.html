@@ -70,6 +70,25 @@
     call('setPointer', function (r) { show(r); setTimeout(refresh, 5000); }, { enabled: !pointerOn });
   };
   $('refresh').onclick = refresh;
+  // D-pad navigation: webOS doesn't move focus on arrow keys by itself, and with the pointer
+  // turned off this is the only way to reach the buttons.
+  var buttons = [$('enable'), $('disable'), $('pointer'), $('refresh')];
+  document.addEventListener('keydown', function (e) {
+    var i = buttons.indexOf(document.activeElement);
+    var k = e.keyCode;
+    if (k === 37 || k === 38) {            // left / up
+      i = i <= 0 ? buttons.length - 1 : i - 1;
+    } else if (k === 39 || k === 40) {     // right / down
+      i = (i + 1) % buttons.length;
+    } else if (k === 13) {                 // OK
+      if (i >= 0) { e.preventDefault(); buttons[i].click(); }
+      return;
+    } else {
+      return;                              // leave Back/Home etc. to the system
+    }
+    e.preventDefault();
+    buttons[i].focus();
+  });
   refresh();
   $('enable').focus();
 </script>

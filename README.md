@@ -87,6 +87,25 @@ webOS version, whether it worked or not.
 
 The script logs to `/tmp/magic-remote-unlock.log` on the TV.
 
+## Other TVs (C6, G5, and so on)
+
+I only own a C5, so that's the only place this has run. A newer TV like the C6 (2026) should be
+handled without changes: the script reads the TV's own table and raises older remotes to *its*
+newest year, and it finds the pointer functions by name. But "should" isn't "tested", and a new
+firmware could change the layout. If it does, the script patches nothing and logs why, so the TV
+stays stock.
+
+You can find out what it would do on your TV without changing anything:
+
+```sh
+scp scripts/50-magic-remote-unlock root@<tv-ip>:/tmp/
+ssh root@<tv-ip> sh /tmp/50-magic-remote-unlock --check
+```
+
+It prints the webOS version, whether it found the remote table, which entries it would change
+and whether the pointer option can be applied. Nothing is mounted or restarted. If you try it on
+a C6 or any other model, please paste the output in an issue, whether it looks right or not.
+
 ## Building the package
 
 ```sh

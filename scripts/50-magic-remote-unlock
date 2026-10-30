@@ -13,7 +13,7 @@
 # Every Bluetooth Magic Remote model older than the TV's newest supported year
 # is unlocked; there is nothing to configure.
 
-TARGET=/usr/sbin/lginput2
+TARGET="${LGINPUT2_PATH:-/usr/sbin/lginput2}"   # override only for testing
 PATCHED=/tmp/lginput2.magic-remote-unlock
 LOG=/tmp/magic-remote-unlock.log
 SERVICE=lginput2
@@ -21,22 +21,12 @@ SERVICE=lginput2
 # the on-screen pointer and wheel off.
 NOPOINTER_FLAG=/var/lib/webosbrew/magic-remote-unlock.nopointer
 MODE="$1"   # "--reapply": drop the current patch and apply again (used when the toggle changes)
+            # "--check":   dry run, prints what would be patched, changes nothing
 
 log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
 
-run() {
-    if grep -q " $TARGET " /proc/mounts; then
-        [ "$MODE" = "--reapply" ] || { log "already mounted, nothing to do"; return 0; }
-        systemctl stop "$SERVICE"; umount "$TARGET" || { log "umount failed"; systemctl start "$SERVICE"; return 1; }
-        log "removed previous patch"
-    fi
-    NOPOINTER=0; [ -e "$NOPOINTER_FLAG" ] && NOPOINTER=1
-    command -v python3 >/dev/null 2>&1 || { log "python3 not found, aborting"; return 1; }
-
-    # wait (max 3 min) for the stock binary to be readable
-    n=0; while [ ! -r "$TARGET" ] && [ $n -lt 90 ]; do sleep 2; n=$((n+1)); done
-
-    python3 - "$TARGET" "$PATCHED" "$NOPOINTER" >> "$LOG" 2>&1 <<'PY'
+patcher() {
+    python3 - "$1" "$2" "$3" <<'PY'
 import struct, sys
 src, dst, no_pointer = sys.argv[1:4]
 d = bytearray(open(src, 'rb').read())
@@ -73,19 +63,25 @@ def entry_name(e):
     name = bytes(d[o:end])
     return name.decode('latin1') if name[:4] in (b'LGE ', b'WEE ') else None
 
-# Anchor on the known-good "LGE MR20" entry, then walk the whole table around it.
-needle = b'\0LGE MR20\0'
-hits, i = set(), d.find(needle)
-while i != -1:
-    hits.add(o2v(i + 1)); i = d.find(needle, i + 1)
+# Anchor on a known remote entry, then walk the whole table around it. MR20 first; the others
+# are fallbacks in case a newer firmware drops that entry.
+ANCHOR_NAMES = ['LGE MR20', 'LGE MR21', 'LGE MR19', 'LGE MR22', 'LGE MR23', 'LGE MR24', 'LGE MR25GA']
 anchors = []
-for off, va, fsz, fl in segs:
-    if fl & 2:  # writable segment (.data) holds the table
-        for o in range(off, off + fsz - 3, 4):
-            if u32(o) in hits and entry_name(o - 0xc):
-                anchors.append(o - 0xc)
+for anchor_name in ANCHOR_NAMES:
+    needle = b'\0' + anchor_name.encode() + b'\0'
+    hits, i = set(), d.find(needle)
+    while i != -1:
+        hits.add(o2v(i + 1)); i = d.find(needle, i + 1)
+    anchors = []
+    for off, va, fsz, fl in segs:
+        if fl & 2:  # writable segment (.data) holds the table
+            for o in range(off, off + fsz - 3, 4):
+                if u32(o) in hits and entry_name(o - 0xc):
+                    anchors.append(o - 0xc)
+    if len(anchors) == 1:
+        break
 if len(anchors) != 1:
-    sys.exit("SKIP: found %d candidate table anchors (firmware layout changed?)" % len(anchors))
+    sys.exit("SKIP: remote table not found (firmware layout changed?)")
 first = anchors[0]
 while entry_name(first - STRIDE):
     first -= STRIDE
@@ -93,6 +89,7 @@ entries, e = [], first
 while entry_name(e):
     entries.append(e); e += STRIDE
 new_year = max(u32(e + 0x14) for e in entries)
+print("remote table: %d entries, newest year %d (anchor %s)" % (len(entries), new_year, anchor_name))
 
 changed = 0
 for e in entries:
@@ -165,6 +162,29 @@ if no_pointer == '1':
     print("pointer: disabled" if err is None else "pointer: SKIPPED, " + err)
 open(dst, 'wb').write(d)
 PY
+}
+
+run() {
+    if [ "$MODE" = "--check" ]; then
+        PATCHED=/tmp/lginput2.check; LOG=/dev/stdout
+        echo "webOS: $(sed -n 's/^PRETTY_NAME=//p' /etc/os-release 2>/dev/null)  arch: $(uname -m)"
+        grep -q " $TARGET " /proc/mounts && echo "note: a patch is already mounted, so the table below may show already-patched values"
+        patcher "$TARGET" "$PATCHED" 1 2>&1
+        echo "(dry run: nothing was changed)"
+        rm -f "$PATCHED"; return 0
+    fi
+    if grep -q " $TARGET " /proc/mounts; then
+        [ "$MODE" = "--reapply" ] || { log "already mounted, nothing to do"; return 0; }
+        systemctl stop "$SERVICE"; umount "$TARGET" || { log "umount failed"; systemctl start "$SERVICE"; return 1; }
+        log "removed previous patch"
+    fi
+    NOPOINTER=0; [ -e "$NOPOINTER_FLAG" ] && NOPOINTER=1
+    command -v python3 >/dev/null 2>&1 || { log "python3 not found, aborting"; return 1; }
+
+    # wait (max 3 min) for the stock binary to be readable
+    n=0; while [ ! -r "$TARGET" ] && [ $n -lt 90 ]; do sleep 2; n=$((n+1)); done
+
+    patcher "$TARGET" "$PATCHED" "$NOPOINTER" >> "$LOG" 2>&1
     [ $? -eq 0 ] || { log "patching failed/skipped, leaving stock lginput2 untouched"; return 1; }
     chmod 755 "$PATCHED"
     mount --bind "$PATCHED" "$TARGET" || { log "bind mount failed"; return 1; }
@@ -174,6 +194,7 @@ PY
     systemctl restart "$SERVICE" && log "restarted $SERVICE" || log "restart of $SERVICE failed"
 }
 
+if [ "$MODE" = "--check" ]; then run; exit 0; fi
 # run detached so the Homebrew startup script is never blocked
 ( run ) >/dev/null 2>&1 &
 exit 0
