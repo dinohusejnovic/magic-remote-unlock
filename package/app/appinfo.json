@@ -1,0 +1,11 @@
+{
+    "id": "io.github.dinohusejnovic.magicremoteunlock",
+    "version": "1.0.0",
+    "vendor": "Dino Husejnovic",
+    "title": "Magic Remote Unlock",
+    "icon": "assets/icon80.png",
+    "largeIcon": "assets/icon130.png",
+    "main": "index.html",
+    "type": "web",
+    "appDescription": "Use older LG Magic Remotes (e.g. MR20) on 2025+ webOS TVs"
+}

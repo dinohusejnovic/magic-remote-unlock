@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Magic Remote Unlock</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #14171c; color: #e8eaed; font: 28px/1.4 sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 60px; }
+  h1 { font-size: 48px; margin: 0 0 8px; }
+  p { color: #aab0b8; margin: 8px 0; }
+  .row { display: flex; gap: 24px; margin: 36px 0; }
+  button { font: inherit; padding: 18px 40px; border: 3px solid transparent; border-radius: 12px; background: #2b3139; color: inherit; }
+  button:focus { outline: none; border-color: #cf0652; background: #3a424d; }
+  dl { display: grid; grid-template-columns: 340px 1fr; gap: 6px 20px; margin: 0; }
+  dt { color: #aab0b8; } dd { margin: 0; }
+  pre { background: #0d0f13; padding: 16px; border-radius: 8px; font-size: 20px; white-space: pre-wrap; min-height: 80px; }
+  .err { color: #ff8a8a; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Magic Remote Unlock</h1>
+  <p>Lets older Magic Remotes (e.g. MR20) pair with this TV. Turn it on, then put the remote in pairing mode.</p>
+  <div class="row">
+    <button id="enable">Enable</button>
+    <button id="disable">Disable</button>
+    <button id="refresh">Refresh</button>
+  </div>
+  <p id="msg" class="err"></p>
+  <dl>
+    <dt>Service running as root</dt><dd id="root">…</dd>
+    <dt>Starts on boot</dt><dd id="enabled">…</dd>
+    <dt>Patch active now</dt><dd id="active">…</dd>
+    <dt>Paired remote</dt><dd id="paired">…</dd>
+  </dl>
+  <p>Log</p>
+  <pre id="log"></pre>
+</main>
+<script>
+  var SVC = 'luna://io.github.dinohusejnovic.magicremoteunlock.service/';
+  function $(id) { return document.getElementById(id); }
+  function call(method, cb) {
+    var bridge = new PalmServiceBridge();
+    bridge.onservicecallback = function (raw) {
+      var r; try { r = JSON.parse(raw); } catch (e) { r = { returnValue: false, errorText: 'bad reply' }; }
+      cb(r);
+    };
+    bridge.call(SVC + method, '{}');
+  }
+  function show(r) {
+    if (!r.returnValue) { $('msg').textContent = r.errorText || 'Request failed'; return; }
+    $('msg').textContent = r.root ? '' : 'Service is not elevated. Open the Homebrew Channel, find this app and elevate it (or reinstall it from there).';
+    $('root').textContent = r.root ? 'yes' : 'no';
+    $('enabled').textContent = r.enabled ? 'yes' : 'no';
+    $('active').textContent = r.active ? 'yes' : 'no (applies after Enable, or on next boot)';
+    $('paired').textContent = r.pairedRemote || 'none';
+    $('log').textContent = r.log || '';
+  }
+  function act(method) { call(method, function (r) { show(r); setTimeout(refresh, 4000); }); }
+  function refresh() { call('status', show); }
+  $('enable').onclick = function () { act('enable'); };
+  $('disable').onclick = function () { act('disable'); };
+  $('refresh').onclick = refresh;
+  refresh();
+  $('enable').focus();
+</script>
+</body>
+</html>

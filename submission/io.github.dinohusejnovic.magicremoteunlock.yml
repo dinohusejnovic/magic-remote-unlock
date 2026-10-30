@@ -1,0 +1,25 @@
+title: Magic Remote Unlock
+iconUri: https://raw.githubusercontent.com/dinohusejnovic/magic-remote-unlock/main/assets/icon160.png
+manifestUrl: https://github.com/dinohusejnovic/magic-remote-unlock/releases/latest/download/io.github.dinohusejnovic.magicremoteunlock.manifest.json
+category: system
+pool: main
+requirements:
+  webosRelease: '>=10.0'
+description: |
+  # Magic Remote Unlock
+
+  Lets older LG Magic Remotes (tested: MR20) pair with 2025 webOS TVs, which otherwise reject them
+  with "This remote is not supported by this TV."
+
+  The Magic Remote service on 2025 TVs refuses any remote older than the TV's support start year.
+  This app installs a boot script that raises the year for the remotes you choose, in a RAM copy of
+  the TV's own `lginput2` that is bind-mounted over the original. The system partition is never
+  modified and no LG binary is shipped. A reboot without the script restores stock behavior.
+
+  Your TV needs to be [rooted](https://www.webosbrew.org/rooting/). Tested only on an LG C5
+  (webOS 10.3.1) with an MR20.
+
+  Source code on [GitHub](https://github.com/dinohusejnovic/magic-remote-unlock).
+
+funding:
+  github: [ dinohusejnovic ]

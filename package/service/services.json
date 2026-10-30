@@ -1,0 +1,9 @@
+{
+    "id": "io.github.dinohusejnovic.magicremoteunlock.service",
+    "description": "Magic Remote Unlock service",
+    "services": [
+        {
+            "name": "io.github.dinohusejnovic.magicremoteunlock.service"
+        }
+    ]
+}
