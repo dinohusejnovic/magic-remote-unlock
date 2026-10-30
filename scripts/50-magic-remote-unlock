@@ -1,0 +1,97 @@
+#!/bin/sh
+# Allow older LG Magic Remotes (e.g. MR20) to pair with 2025+ webOS TVs.
+#
+# Why: lginput2 (the Magic Remote service, com.webos.service.mrcu) keeps a table
+# of known remote names with a model year and rejects any remote older than the
+# TV's "support start year" ("This remote is not supported by this TV.").
+# This script copies the TV's own lginput2 to /tmp, raises the year of the
+# configured remotes in that copy, bind-mounts the copy over /usr/sbin/lginput2
+# and restarts the service. Nothing on the read-only system partition is
+# modified; a reboot (or `umount /usr/sbin/lginput2`) restores stock behaviour.
+#
+# Install to /var/lib/webosbrew/init.d/ (Homebrew Channel runs it at boot).
+# Remotes to unlock: edit /var/lib/webosbrew/magic-remote-unlock.conf (one remote
+# name per line, e.g. "LGE MR20"). Default is just "LGE MR20".
+
+TARGET=/usr/sbin/lginput2
+PATCHED=/tmp/lginput2.magic-remote-unlock
+CONF=/var/lib/webosbrew/magic-remote-unlock.conf
+LOG=/tmp/magic-remote-unlock.log
+SERVICE=lginput2
+
+log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
+
+run() {
+    if grep -q " $TARGET " /proc/mounts; then
+        log "already mounted, nothing to do"; return 0
+    fi
+    command -v python3 >/dev/null 2>&1 || { log "python3 not found, aborting"; return 1; }
+    [ -f "$CONF" ] || echo "LGE MR20" > "$CONF"
+
+    # wait (max 3 min) for the stock binary to be readable
+    n=0; while [ ! -r "$TARGET" ] && [ $n -lt 90 ]; do sleep 2; n=$((n+1)); done
+
+    python3 - "$TARGET" "$PATCHED" "$CONF" >> "$LOG" 2>&1 <<'PY'
+import struct, sys
+src, dst, conf = sys.argv[1:4]
+NEW_YEAR = 2025
+names = [l.strip() for l in open(conf) if l.strip() and not l.startswith('#')]
+d = bytearray(open(src, 'rb').read())
+assert d[:4] == b'\x7fELF' and d[4] == 1 and d[5] == 1, "expected 32-bit little-endian ELF"
+phoff, = struct.unpack_from('<I', d, 0x1c)
+phentsize, phnum = struct.unpack_from('<HH', d, 0x2a)
+segs = []  # (file_off, vaddr, filesz, flags) of PT_LOAD segments
+for i in range(phnum):
+    t, off, va, _, fsz, _, fl, _ = struct.unpack_from('<8I', d, phoff + i * phentsize)
+    if t == 1:
+        segs.append((off, va, fsz, fl))
+
+def o2v(o):
+    for off, va, fsz, _ in segs:
+        if off <= o < off + fsz:
+            return va + o - off
+
+changed = 0
+for name in names:
+    needle = b'\0' + name.encode() + b'\0'
+    hit_vaddrs, i = set(), d.find(needle)
+    while i != -1:
+        hit_vaddrs.add(o2v(i + 1)); i = d.find(needle, i + 1)
+    # The table lives in a writable segment; each entry is
+    #   { ..., name_ptr @+0xc, ?, year @+0x14 }  (stride 0x18)
+    # and the in-place value of a relative-relocated pointer is its vaddr.
+    ptrs = []
+    for off, va, fsz, fl in segs:
+        if not fl & 2:
+            continue
+        for o in range(off, off + fsz - 3, 4):
+            if struct.unpack_from('<I', d, o)[0] in hit_vaddrs:
+                ptrs.append(o)
+    good = [o for o in ptrs if 2010 <= struct.unpack_from('<I', d, o + 8)[0] <= 2100]
+    if len(good) != 1:
+        print("SKIP %r: %d candidate table entries (firmware layout changed?)" % (name, len(good)))
+        continue
+    yo = good[0] + 8
+    cur, = struct.unpack_from('<I', d, yo)
+    if cur >= NEW_YEAR:
+        print("%r already year %d" % (name, cur))
+        continue
+    struct.pack_into('<I', d, yo, NEW_YEAR)
+    changed += 1
+    print("%r: year %d -> %d (file offset 0x%x)" % (name, cur, NEW_YEAR, yo))
+if not changed:
+    sys.exit("nothing patched")
+open(dst, 'wb').write(d)
+PY
+    [ $? -eq 0 ] || { log "patching failed/skipped, leaving stock lginput2 untouched"; return 1; }
+    chmod 755 "$PATCHED"
+    mount --bind "$PATCHED" "$TARGET" || { log "bind mount failed"; return 1; }
+    log "bind-mounted patched lginput2"
+
+    # (re)start so the service runs the patched binary; also starts it if stopped
+    systemctl restart "$SERVICE" && log "restarted $SERVICE" || log "restart of $SERVICE failed"
+}
+
+# run detached so the Homebrew startup script is never blocked
+( run ) >/dev/null 2>&1 &
+exit 0
