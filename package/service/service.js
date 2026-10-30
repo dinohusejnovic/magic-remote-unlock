@@ -41,6 +41,15 @@ function installScript() {
   fs.chmodSync(SCRIPT_DST, 0o755);
 }
 
+// After an app update the boot script in init.d would otherwise stay the old version until
+// the user pressed Enable again. Refresh it when the service starts (only if already enabled).
+try {
+  if (isRoot() && fs.existsSync(SCRIPT_DST) &&
+      !fs.readFileSync(SCRIPT_DST).equals(fs.readFileSync(SCRIPT_SRC))) {
+    installScript();
+  }
+} catch (e) { /* best effort */ }
+
 service.register('status', (message) => message.respond(status()));
 
 service.register('enable', (message) => {
