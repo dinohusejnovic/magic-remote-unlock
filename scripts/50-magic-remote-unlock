@@ -5,17 +5,16 @@
 # of known remote names with a model year and rejects any remote older than the
 # TV's "support start year" ("This remote is not supported by this TV.").
 # This script copies the TV's own lginput2 to /tmp, raises the year of the
-# configured remotes in that copy, bind-mounts the copy over /usr/sbin/lginput2
+# older remotes in that copy, bind-mounts the copy over /usr/sbin/lginput2
 # and restarts the service. Nothing on the read-only system partition is
 # modified; a reboot (or `umount /usr/sbin/lginput2`) restores stock behaviour.
 #
 # Install to /var/lib/webosbrew/init.d/ (Homebrew Channel runs it at boot).
-# Remotes to unlock: edit /var/lib/webosbrew/magic-remote-unlock.conf (one remote
-# name per line, e.g. "LGE MR20"). Default is just "LGE MR20".
+# Every Bluetooth Magic Remote model older than the TV's newest supported year
+# is unlocked; there is nothing to configure.
 
 TARGET=/usr/sbin/lginput2
 PATCHED=/tmp/lginput2.magic-remote-unlock
-CONF=/var/lib/webosbrew/magic-remote-unlock.conf
 LOG=/tmp/magic-remote-unlock.log
 SERVICE=lginput2
 
@@ -26,16 +25,13 @@ run() {
         log "already mounted, nothing to do"; return 0
     fi
     command -v python3 >/dev/null 2>&1 || { log "python3 not found, aborting"; return 1; }
-    [ -f "$CONF" ] || echo "LGE MR20" > "$CONF"
 
     # wait (max 3 min) for the stock binary to be readable
     n=0; while [ ! -r "$TARGET" ] && [ $n -lt 90 ]; do sleep 2; n=$((n+1)); done
 
-    python3 - "$TARGET" "$PATCHED" "$CONF" >> "$LOG" 2>&1 <<'PY'
+    python3 - "$TARGET" "$PATCHED" >> "$LOG" 2>&1 <<'PY'
 import struct, sys
-src, dst, conf = sys.argv[1:4]
-NEW_YEAR = 2025
-names = [l.strip() for l in open(conf) if l.strip() and not l.startswith('#')]
+src, dst = sys.argv[1:3]
 d = bytearray(open(src, 'rb').read())
 assert d[:4] == b'\x7fELF' and d[4] == 1 and d[5] == 1, "expected 32-bit little-endian ELF"
 phoff, = struct.unpack_from('<I', d, 0x1c)
@@ -51,36 +47,58 @@ def o2v(o):
         if off <= o < off + fsz:
             return va + o - off
 
-changed = 0
-for name in names:
-    needle = b'\0' + name.encode() + b'\0'
-    hit_vaddrs, i = set(), d.find(needle)
-    while i != -1:
-        hit_vaddrs.add(o2v(i + 1)); i = d.find(needle, i + 1)
-    # The table lives in a writable segment; each entry is
-    #   { ..., name_ptr @+0xc, ?, year @+0x14 }  (stride 0x18)
-    # and the in-place value of a relative-relocated pointer is its vaddr.
-    ptrs = []
-    for off, va, fsz, fl in segs:
-        if not fl & 2:
-            continue
+def v2o(v):
+    for off, va, fsz, _ in segs:
+        if va <= v < va + fsz:
+            return off + v - va
+
+u32 = lambda o: struct.unpack_from('<I', d, o)[0]
+STRIDE = 0x18  # entry: { kind, type, ?, name_ptr @+0xc, flag, year @+0x14 }
+
+def entry_name(e):
+    """Name of the table entry at file offset e, or None if it doesn't look like one."""
+    if e < 0 or e + STRIDE > len(d):
+        return None
+    o = v2o(u32(e + 0xc))
+    if o is None or not 2010 <= u32(e + 0x14) <= 2100:
+        return None
+    end = d.find(b'\0', o)
+    name = bytes(d[o:end])
+    return name.decode('latin1') if name[:4] in (b'LGE ', b'WEE ') else None
+
+# Anchor on the known-good "LGE MR20" entry, then walk the whole table around it.
+needle = b'\0LGE MR20\0'
+hits, i = set(), d.find(needle)
+while i != -1:
+    hits.add(o2v(i + 1)); i = d.find(needle, i + 1)
+anchors = []
+for off, va, fsz, fl in segs:
+    if fl & 2:  # writable segment (.data) holds the table
         for o in range(off, off + fsz - 3, 4):
-            if struct.unpack_from('<I', d, o)[0] in hit_vaddrs:
-                ptrs.append(o)
-    good = [o for o in ptrs if 2010 <= struct.unpack_from('<I', d, o + 8)[0] <= 2100]
-    if len(good) != 1:
-        print("SKIP %r: %d candidate table entries (firmware layout changed?)" % (name, len(good)))
+            if u32(o) in hits and entry_name(o - 0xc):
+                anchors.append(o - 0xc)
+if len(anchors) != 1:
+    sys.exit("SKIP: found %d candidate table anchors (firmware layout changed?)" % len(anchors))
+first = anchors[0]
+while entry_name(first - STRIDE):
+    first -= STRIDE
+entries, e = [], first
+while entry_name(e):
+    entries.append(e); e += STRIDE
+new_year = max(u32(e + 0x14) for e in entries)
+
+changed = 0
+for e in entries:
+    name, year = entry_name(e), u32(e + 0x14)
+    # Only Bluetooth Magic Remote style entries (kind 1, type 0). Leave the legacy RF remotes
+    # (kind 0), the IR blaster (type 4) and Fire TV remotes alone.
+    if year >= new_year or u32(e) != 1 or u32(e + 4) != 0 or 'FTV' in name:
         continue
-    yo = good[0] + 8
-    cur, = struct.unpack_from('<I', d, yo)
-    if cur >= NEW_YEAR:
-        print("%r already year %d" % (name, cur))
-        continue
-    struct.pack_into('<I', d, yo, NEW_YEAR)
+    struct.pack_into('<I', d, e + 0x14, new_year)
     changed += 1
-    print("%r: year %d -> %d (file offset 0x%x)" % (name, cur, NEW_YEAR, yo))
+    print("%-12s %d -> %d" % (name, year, new_year))
 if not changed:
-    sys.exit("nothing patched")
+    sys.exit("nothing to patch")
 open(dst, 'wb').write(d)
 PY
     [ $? -eq 0 ] || { log "patching failed/skipped, leaving stock lginput2 untouched"; return 1; }

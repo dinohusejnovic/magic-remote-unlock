@@ -26,13 +26,14 @@ check gets in the way.
 
 ## What this does
 
-At boot it copies the TV's own `lginput2` to `/tmp`, bumps the year for the remotes you list
-(MR20 by default) from 2020 to 2025 in that copy, bind-mounts the copy over `/usr/sbin/lginput2`
-and restarts the service.
+At boot it copies the TV's own `lginput2` to `/tmp`, raises the year of every older Bluetooth
+Magic Remote in its table (MR18 through MR24 and their PM variants) to the newest year the
+table knows, bind-mounts the copy over `/usr/sbin/lginput2` and restarts the service. There is
+nothing to configure.
 
 - The system partition is never written to. Reboot without the script and the TV is stock again.
 - No LG binary is included here. The patch is applied to your TV's own file, and it finds the
-  table entry by searching for the remote's name instead of using a fixed offset. If a firmware
+  table by searching for the MR20 entry instead of using a fixed offset. If a firmware
   update changes the layout, the script finds nothing, patches nothing and leaves the TV alone.
 
 ## Install
@@ -62,10 +63,11 @@ Remove the app in the Homebrew Channel, or run `./uninstall.sh <tv-ip>`, then re
 
 ## Other remotes
 
-Only the MR20 has been tested. The firmware's table also lists MR19, MR21 through MR25 and the
-2018 to 2019 remotes. To try one, put its name on its own line in
-`/var/lib/webosbrew/magic-remote-unlock.conf` on the TV, for example `LGE MR21`, and reboot. If it
-works (or doesn't) for you, please open an issue with the TV model and webOS version.
+Only the MR20 has been tested. The script unlocks every Bluetooth Magic Remote older than the
+TV's newest supported year, so MR18 through MR24 and the PM variants should work too, but I can't
+confirm that without owning them. The legacy RF remotes (MR15 and MR16), the IR blaster and the
+Fire TV remotes are left alone. If you try one, please open an issue with the remote, TV model and
+webOS version, whether it worked or not.
 
 The script logs to `/tmp/magic-remote-unlock.log` on the TV.
 
