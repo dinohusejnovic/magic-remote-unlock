@@ -28,9 +28,7 @@ At boot it copies the TV's own `lginput2` to `/tmp`, raises the year of every ol
 You need a rooted TV with the [Homebrew Channel](https://www.webosbrew.org/) installed. The
 patch script needs `python3`, which webOS 10 has.
 
-**Through the Homebrew Channel.** Once the package is accepted into the official store, search
-for "Magic Remote Unlock", install it, open it and press Enable. Until then you can add this
-project's own repository:
+**Through the Homebrew Channel.** Add this project's repository:
 
 1. Open the Homebrew Channel and go to Settings.
 2. Choose "Add repository" and enter
