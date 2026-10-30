@@ -1,5 +1,7 @@
 # magic-remote-unlock
 
+![Magic Remote Unlock running on an LG C5](assets/screenshot.png)
+
 Use an older LG Magic Remote, like the MR20, on a 2025 webOS TV via Bluetooth.
 Get full functionality of the Magic Remote like voice control and typing, pointer, scrolling and high responsiveness.
 
