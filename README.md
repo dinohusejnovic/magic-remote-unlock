@@ -62,21 +62,13 @@ Remove the app in the Homebrew Channel, or run `./uninstall.sh <tv-ip>`, then re
 
 ## Other remotes
 
-Only the MR20 has been tested, and the pointer-off option has only been tried on the same C5. The script unlocks every Bluetooth Magic Remote older than the
-TV's newest supported year, so MR18 through MR24 and the PM variants should work too, but I can't
-confirm that without owning them. The legacy RF remotes (MR15 and MR16), the IR blaster and the
-Fire TV remotes are left alone. If you try one, please open an issue with the remote, TV model and
-webOS version, whether it worked or not.
+Only the MR20 has been tested, and the pointer-off option has only been tried on the same C5. The script unlocks every Bluetooth Magic Remote older than the TV's newest supported year, so MR18 through MR24 and the PM variants should work too, but I can't confirm that without owning them. The legacy RF remotes (MR15 and MR16), the IR blaster and the Fire TV remotes are not applicable. If you try one, please open an issue with the remote, TV model and webOS version, whether it worked or not.
 
 The script logs to `/tmp/magic-remote-unlock.log` on the TV.
 
 ## Other TVs (C6, G5, and so on)
 
-I only own a C5, so that's the only place this has run. A newer TV like the C6 (2026) should be
-handled without changes: the script reads the TV's own table and raises older remotes to *its*
-newest year, and it finds the pointer functions by name. But "should" isn't "tested", and a new
-firmware could change the layout. If it does, the script patches nothing and logs why, so the TV
-stays stock.
+I only own a C5, so that's the only place this has run. A newer TV like the C6 (2026) should be handled without changes: the script reads the TV's own table and raises older remotes to *its* newest year, and it finds the pointer functions by name. New firmware could change the layout. If it does, the script patches nothing and logs why, so the TV stays stock.
 
 You can find out what it would do on your TV without changing anything:
 
@@ -85,9 +77,7 @@ scp scripts/50-magic-remote-unlock root@<tv-ip>:/tmp/
 ssh root@<tv-ip> sh /tmp/50-magic-remote-unlock --check
 ```
 
-It prints the webOS version, whether it found the remote table, which entries it would change
-and whether the pointer option can be applied. Nothing is mounted or restarted. If you try it on
-a C6 or any other model, please paste the output in an issue, whether it looks right or not.
+It prints the webOS version, whether it found the remote table, which entries it would change and whether the pointer option can be applied. Nothing is mounted or restarted. If you try it on a C6 or any other model, please paste the output in an issue, whether it looks right or not.
 
 ## Building the package
 
@@ -99,28 +89,14 @@ It needs nothing but Python 3. `tools/make_icons.py` regenerates the icons.
 
 ## Built with AI
 
-I used Claude (Claude Code, from Anthropic) to build this. It did the digging through
-`lginput2` over SSH on my TV to find the year check, wrote the boot script and the Homebrew
-package, and wrote the first version of this README. I supplied the TV and the remote, did the
-pairing, and checked on the real hardware that the MR20 pairs and works, and that it survives
-a reboot. Treat it with the same caution as any script that patches a system service on your
-TV, and read `scripts/50-magic-remote-unlock` before running it. It's short.
+I used Claude (Claude Code) to build this. It did the digging through `lginput2` over SSH on my TV to find the year check, wrote the boot script and the Homebrew package. I supplied the TV and the remote, did the pairing, and checked on the real hardware that the MR20 pairs and works, and that it survives a reboot. Treat it with the same caution as any script that patches a system service on your TV, and read `scripts/50-magic-remote-unlock` before running it. It's short.
 
 ## Credits
 
-The pointer-off option does what [Fenrir200678/disable-lg-magic-remote](https://github.com/Fenrir200678/disable-lg-magic-remote)
-does (itself a fork of [bciuca's original](https://github.com/bciuca/disable-lg-magic-remote)):
-suppress pointer position and wheel events, and turn cursor-on into cursor-off so menus drop back to
-D-pad navigation. I got the idea and the behavior from there. The implementation here is separate. Instead of
-injecting a hook into the running process, it patches the same functions in the copy of
-`lginput2` this project already makes, found by exported symbol name, with byte checks that
-skip the patch on a firmware it doesn't recognise. No code was copied. If you only want the
-pointer gone and have a remote the TV already accepts, that project is the better fit.
+The pointer-off option does what [Fenrir200678/disable-lg-magic-remote](https://github.com/Fenrir200678/disable-lg-magic-remote) does (itself a fork of [bciuca's original](https://github.com/bciuca/disable-lg-magic-remote)): suppress pointer position and wheel events, and turn cursor-on into cursor-off so menus drop back to D-pad navigation. I got the idea and the behavior from there. The implementation here is separate. Instead of injecting a hook into the running process, it patches the same functions in the copy of `lginput2` this project already makes, found by exported symbol name, with byte checks that skip the patch on a firmware it doesn't recognise. No code was copied. If you only want the pointer gone and have a remote the TV already accepts, that project is the better fit.
 
 ## Caveats
 
-It changes how a system service behaves on your own TV, so use it at your own risk. The Homebrew
-startup failsafe disables customizations if a boot crashes. This project isn't affiliated with
-or endorsed by LG.
+It changes how a system service behaves on your own TV, so use it at your own risk. The Homebrew startup failsafe disables customizations if a boot crashes. This project isn't affiliated with or endorsed by LG.
 
 MIT licensed.
