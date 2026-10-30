@@ -1,20 +1,13 @@
 # magic-remote-unlock
 
-Use an older LG Magic Remote, like the MR20, on a 2025 webOS TV. Pointer included, and there's
-an option to turn the pointer off if you'd rather have a Bluetooth remote that just does D-pad.
-
-I have an LG C5 and didn't like the remote it came with. My old MR20 has Bluetooth and the TV has
-Bluetooth, so it should just work. It doesn't: the TV says "Registering..." and then "This remote
-is not supported by this TV." This repo gets rid of that message.
+Use an older LG Magic Remote, like the MR20, on a 2025 webOS TV via Bluetooth.
+Get full functionality of the Magic Remote like voice control and typing, pointer, scrolling and high responsiveness.
 
 Tested on one TV (C5, webOS 10.3.1) with one remote (MR20). See [Other remotes](#other-remotes).
 
-## What's actually going on
+## Background
 
-Nothing is wrong with Bluetooth. The Magic Remote service on the TV, `/usr/sbin/lginput2`, keeps a
-table of remote names and the year each one came out, and it refuses anything older than the
-TV's "support start year". On 2025 sets that year is 2025. The log on the TV says so directly
-(`/tmp/var/log/dbg-log`):
+The Magic Remote service on newer LG TVs, `/usr/sbin/lginput2`, keeps a table of remote names and the year each one came out, and it refuses anything older than the TV's "support start year". On 2025 sets that year is 2025. The log on the TV says so directly (`/tmp/var/log/dbg-log`):
 
 ```
 remote Support Start Year: 2025
@@ -22,23 +15,13 @@ remote Support Start Year: 2025
 Only specific Magic Remote model can be paired.
 ```
 
-The firmware already knows the MR20 by name and has the pointer code for it. Only that year
-check gets in the way.
-
 ## What this does
 
-At boot it copies the TV's own `lginput2` to `/tmp`, raises the year of every older Bluetooth
-Magic Remote in its table (MR18 through MR24 and their PM variants) to the newest year the
-table knows, bind-mounts the copy over `/usr/sbin/lginput2` and restarts the service. There is
-nothing to configure.
+At boot it copies the TV's own `lginput2` to `/tmp`, raises the year of every older Bluetooth Magic Remote in its table (MR18 through MR24 and their PM variants) to the newest year the table knows, bind-mounts the copy over `/usr/sbin/lginput2` and restarts the service. There is nothing to configure.
 
-- Optional **pointer off** switch (in the app): keeps the remote connected over Bluetooth but
-  hides the on-screen pointer and ignores the wheel, so menus use the arrow keys. Buttons are
-  untouched. It's off by default, so the pointer works as normal until you turn it off.
+- Optional **pointer off** switch (in the app): keeps the remote connected over Bluetooth but hides the on-screen pointer and ignores the wheel, so menus use the arrow keys. Buttons are untouched. It's off by default, so the pointer works as normal until you turn it off.
 - The system partition is never written to. Reboot without the script and the TV is stock again.
-- No LG binary is included here. The patch is applied to your TV's own file, and it finds the
-  table by searching for the MR20 entry instead of using a fixed offset. If a firmware
-  update changes the layout, the script finds nothing, patches nothing and leaves the TV alone.
+- No LG binary is included here. The patch is applied to your TV's own file, and it finds the table by searching for the remote name entry instead of using a fixed offset. If a firmware update changes the layout, the script finds nothing, patches nothing and leaves the TV alone.
 
 ## Install
 
