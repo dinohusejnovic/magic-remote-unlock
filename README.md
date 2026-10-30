@@ -1,6 +1,7 @@
 # magic-remote-unlock
 
-Use an older LG Magic Remote, like the MR20, on a 2025 webOS TV. Pointer included.
+Use an older LG Magic Remote, like the MR20, on a 2025 webOS TV. Pointer included, and there's
+an option to turn the pointer off if you'd rather have a Bluetooth remote that just does D-pad.
 
 I have an LG C5 and didn't like the remote it came with. My old MR20 has Bluetooth and the TV has
 Bluetooth, so it should just work. It doesn't: the TV says "Registering..." and then "This remote
@@ -31,6 +32,9 @@ Magic Remote in its table (MR18 through MR24 and their PM variants) to the newes
 table knows, bind-mounts the copy over `/usr/sbin/lginput2` and restarts the service. There is
 nothing to configure.
 
+- Optional **pointer off** switch (in the app): keeps the remote connected over Bluetooth but
+  hides the on-screen pointer and ignores the wheel, so menus use the arrow keys. Buttons are
+  untouched. It's off by default, so the pointer works as normal until you turn it off.
 - The system partition is never written to. Reboot without the script and the TV is stock again.
 - No LG binary is included here. The patch is applied to your TV's own file, and it finds the
   table by searching for the MR20 entry instead of using a fixed offset. If a firmware
@@ -41,9 +45,17 @@ nothing to configure.
 You need a rooted TV with the [Homebrew Channel](https://www.webosbrew.org/) installed. The
 patch script needs `python3`, which webOS 10 has.
 
-**Through the Homebrew Channel** (once it's listed there): search for "Magic Remote Unlock",
-install it, open it and press Enable. The package needs root, so the Homebrew Channel will
-offer to elevate its service on install.
+**Through the Homebrew Channel.** Once the package is accepted into the official store, search
+for "Magic Remote Unlock", install it, open it and press Enable. Until then you can add this
+project's own repository:
+
+1. Open the Homebrew Channel and go to Settings.
+2. Choose "Add repository" and enter
+   `https://raw.githubusercontent.com/dinohusejnovic/magic-remote-unlock/main/repository.json`
+3. Go back to the app list, install "Magic Remote Unlock" and open it.
+4. Press Enable. The package needs root, so the Homebrew Channel will offer to elevate its service.
+
+The same app has a **Turn pointer off** button. Use it to switch the pointer off and on again.
 
 **By hand over SSH:**
 
@@ -51,6 +63,10 @@ offer to elevate its service on install.
 ./install.sh <tv-ip>
 ssh root@<tv-ip> /var/lib/webosbrew/init.d/50-magic-remote-unlock   # apply now, or just reboot
 ```
+
+For the pointer switch without the app, create or delete
+`/var/lib/webosbrew/magic-remote-unlock.nopointer` on the TV and run
+`/var/lib/webosbrew/init.d/50-magic-remote-unlock --reapply`.
 
 Then pair the remote. It can't be connected to another device at the time (forget it there
 first). Point it at the TV and hold Home + Back for about five seconds, or hold the wheel. The
@@ -63,7 +79,7 @@ Remove the app in the Homebrew Channel, or run `./uninstall.sh <tv-ip>`, then re
 
 ## Other remotes
 
-Only the MR20 has been tested. The script unlocks every Bluetooth Magic Remote older than the
+Only the MR20 has been tested, and the pointer-off option has only been tried on the same C5. The script unlocks every Bluetooth Magic Remote older than the
 TV's newest supported year, so MR18 through MR24 and the PM variants should work too, but I can't
 confirm that without owning them. The legacy RF remotes (MR15 and MR16), the IR blaster and the
 Fire TV remotes are left alone. If you try one, please open an issue with the remote, TV model and
@@ -87,6 +103,17 @@ package, and wrote the first version of this README. I supplied the TV and the r
 pairing, and checked on the real hardware that the MR20 pairs and works, and that it survives
 a reboot. Treat it with the same caution as any script that patches a system service on your
 TV, and read `scripts/50-magic-remote-unlock` before running it. It's short.
+
+## Credits
+
+The pointer-off option does what [Fenrir200678/disable-lg-magic-remote](https://github.com/Fenrir200678/disable-lg-magic-remote)
+does (itself a fork of [bciuca's original](https://github.com/bciuca/disable-lg-magic-remote)):
+suppress pointer position and wheel events, and turn cursor-on into cursor-off so menus drop back to
+D-pad navigation. I got the idea and the behavior from there. The implementation here is separate. Instead of
+injecting a hook into the running process, it patches the same functions in the copy of
+`lginput2` this project already makes, found by exported symbol name, with byte checks that
+skip the patch on a firmware it doesn't recognise. No code was copied. If you only want the
+pointer gone and have a remote the TV already accepts, that project is the better fit.
 
 ## Caveats
 

@@ -16,6 +16,8 @@ description: |
   the TV's own `lginput2` that is bind-mounted over the original. The system partition is never
   modified and no LG binary is shipped. A reboot without the script restores stock behavior.
 
+  There is also a switch to turn the on-screen pointer off while the remote stays on Bluetooth.
+
   Your TV needs to be [rooted](https://www.webosbrew.org/rooting/). Tested only on an LG C5
   (webOS 10.3.1) with an MR20.
 

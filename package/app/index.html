@@ -24,6 +24,7 @@
   <div class="row">
     <button id="enable">Enable</button>
     <button id="disable">Disable</button>
+    <button id="pointer">Pointer: …</button>
     <button id="refresh">Refresh</button>
   </div>
   <p id="msg" class="err"></p>
@@ -31,6 +32,7 @@
     <dt>Service running as root</dt><dd id="root">…</dd>
     <dt>Starts on boot</dt><dd id="enabled">…</dd>
     <dt>Patch active now</dt><dd id="active">…</dd>
+    <dt>Pointer</dt><dd id="ptr">…</dd>
     <dt>Paired remote</dt><dd id="paired">…</dd>
   </dl>
   <p>Log</p>
@@ -39,13 +41,14 @@
 <script>
   var SVC = 'luna://io.github.dinohusejnovic.magicremoteunlock.service/';
   function $(id) { return document.getElementById(id); }
-  function call(method, cb) {
+  var pointerOn = true;
+  function call(method, cb, params) {
     var bridge = new PalmServiceBridge();
     bridge.onservicecallback = function (raw) {
       var r; try { r = JSON.parse(raw); } catch (e) { r = { returnValue: false, errorText: 'bad reply' }; }
       cb(r);
     };
-    bridge.call(SVC + method, '{}');
+    bridge.call(SVC + method, JSON.stringify(params || {}));
   }
   function show(r) {
     if (!r.returnValue) { $('msg').textContent = r.errorText || 'Request failed'; return; }
@@ -53,6 +56,9 @@
     $('root').textContent = r.root ? 'yes' : 'no';
     $('enabled').textContent = r.enabled ? 'yes' : 'no';
     $('active').textContent = r.active ? 'yes' : 'no (applies after Enable, or on next boot)';
+    pointerOn = !r.pointerDisabled;
+    $('ptr').textContent = pointerOn ? 'on' : 'off (use the arrow keys; Bluetooth stays connected)';
+    $('pointer').textContent = pointerOn ? 'Turn pointer off' : 'Turn pointer on';
     $('paired').textContent = r.pairedRemote || 'none';
     $('log').textContent = r.log || '';
   }
@@ -60,6 +66,9 @@
   function refresh() { call('status', show); }
   $('enable').onclick = function () { act('enable'); };
   $('disable').onclick = function () { act('disable'); };
+  $('pointer').onclick = function () {
+    call('setPointer', function (r) { show(r); setTimeout(refresh, 5000); }, { enabled: !pointerOn });
+  };
   $('refresh').onclick = refresh;
   refresh();
   $('enable').focus();

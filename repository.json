@@ -1,0 +1,11 @@
+{
+  "packages": [
+    {
+      "id": "io.github.dinohusejnovic.magicremoteunlock",
+      "title": "Magic Remote Unlock",
+      "shortDescription": "Use older LG Magic Remotes (e.g. MR20) on 2025+ webOS TVs, with an option to turn the pointer off.",
+      "iconUri": "https://raw.githubusercontent.com/dinohusejnovic/magic-remote-unlock/main/assets/icon160.png",
+      "manifestUrl": "https://github.com/dinohusejnovic/magic-remote-unlock/releases/latest/download/io.github.dinohusejnovic.magicremoteunlock.manifest.json"
+    }
+  ]
+}

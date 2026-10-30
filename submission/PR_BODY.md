@@ -6,6 +6,10 @@ model-year check in `lginput2` (`lginput_util_isNewYearRemote`), not a Bluetooth
 bind-mounts it. Nothing on the system partition is written, and nothing from LG is redistributed. If the table layout
 isn't found, it does nothing.
 
+The app also has a switch that turns the on-screen pointer off while keeping the remote on Bluetooth (same behavior as
+Fenrir200678/disable-lg-magic-remote, done as a static patch of the same runtime copy instead of process injection). It
+is off by default.
+
 Source: https://github.com/dinohusejnovic/magic-remote-unlock
 
 **AI disclosure:** I used Claude (Claude Code, Anthropic) to build this. It reverse-engineered the year check in

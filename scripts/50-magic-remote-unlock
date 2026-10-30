@@ -17,21 +17,28 @@ TARGET=/usr/sbin/lginput2
 PATCHED=/tmp/lginput2.magic-remote-unlock
 LOG=/tmp/magic-remote-unlock.log
 SERVICE=lginput2
+# Create this file (the app's "Pointer" toggle does) to keep the remote on Bluetooth but turn
+# the on-screen pointer and wheel off.
+NOPOINTER_FLAG=/var/lib/webosbrew/magic-remote-unlock.nopointer
+MODE="$1"   # "--reapply": drop the current patch and apply again (used when the toggle changes)
 
 log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
 
 run() {
     if grep -q " $TARGET " /proc/mounts; then
-        log "already mounted, nothing to do"; return 0
+        [ "$MODE" = "--reapply" ] || { log "already mounted, nothing to do"; return 0; }
+        systemctl stop "$SERVICE"; umount "$TARGET" || { log "umount failed"; systemctl start "$SERVICE"; return 1; }
+        log "removed previous patch"
     fi
+    NOPOINTER=0; [ -e "$NOPOINTER_FLAG" ] && NOPOINTER=1
     command -v python3 >/dev/null 2>&1 || { log "python3 not found, aborting"; return 1; }
 
     # wait (max 3 min) for the stock binary to be readable
     n=0; while [ ! -r "$TARGET" ] && [ $n -lt 90 ]; do sleep 2; n=$((n+1)); done
 
-    python3 - "$TARGET" "$PATCHED" >> "$LOG" 2>&1 <<'PY'
+    python3 - "$TARGET" "$PATCHED" "$NOPOINTER" >> "$LOG" 2>&1 <<'PY'
 import struct, sys
-src, dst = sys.argv[1:3]
+src, dst, no_pointer = sys.argv[1:4]
 d = bytearray(open(src, 'rb').read())
 assert d[:4] == b'\x7fELF' and d[4] == 1 and d[5] == 1, "expected 32-bit little-endian ELF"
 phoff, = struct.unpack_from('<I', d, 0x1c)
@@ -99,6 +106,63 @@ for e in entries:
     print("%-12s %d -> %d" % (name, year, new_year))
 if not changed:
     sys.exit("nothing to patch")
+
+# ---- optional: disable the pointer (keep Bluetooth, D-pad and buttons) --------------------
+# send_position / send_wheel become "return 0". In send_custom_event, the cursor-on event
+# (id 4) is made to take the cursor-off (id 5) path, so menus fall back to D-pad navigation.
+u16 = lambda o: struct.unpack_from('<H', d, o)[0]
+
+def dynsym(name):
+    shoff, = struct.unpack_from('<I', d, 0x20)
+    shentsize, shnum = struct.unpack_from('<HH', d, 0x2e)
+    for i in range(shnum):
+        sh = shoff + i * shentsize
+        _, typ, _, _, off, size, link, _, _, entsize = struct.unpack_from('<10I', d, sh)
+        if typ != 11:  # SHT_DYNSYM
+            continue
+        stroff = struct.unpack_from('<10I', d, shoff + link * shentsize)[4]
+        for o in range(off, off + size, entsize or 16):
+            n, value, _, info, _, _ = struct.unpack_from('<IIIBBH', d, o)
+            e = d.find(b'\0', stroff + n)
+            if bytes(d[stroff + n:e]) == name.encode() and value:
+                return v2o(value & ~1)
+
+def patch_pointer():
+    pos = dynsym('lginput_uinput_send_position')
+    wheel = dynsym('lginput_uinput_send_wheel')
+    custom = dynsym('lginput_uinput_send_custom_event')
+    if None in (pos, wheel, custom):
+        return "symbols not found"
+    # prologue checks: push {r4,r5,r6,lr} / push.w {r4-r9,lr} / push.w {r4-r11,lr}
+    if (u16(pos) != 0xb570 or bytes(d[wheel:wheel + 4]) != b'\x2d\xe9\xf0\x43'
+            or bytes(d[custom:custom + 4]) != b'\x2d\xe9\xf0\x4f'):
+        return "unexpected function prologues (firmware changed?)"
+    # in send_custom_event: "subs r3,r1,#4 ; cmp r3,#1 ; bls <cursor on/off handling>"
+    if u16(custom + 0xe) != 0x1f0b or u16(custom + 0x12) != 0x2b01 or u16(custom + 0x16) >> 8 != 0xd9:
+        return "unexpected cursor on/off dispatch (firmware changed?)"
+    # find "bl isNoCursorRemote ; cmp r0,#0 ; beq <normal send path = custom+0x18>"
+    found = []
+    for o in range(custom, custom + 0x100, 2):
+        h1, h2 = u16(o), u16(o + 2)
+        if h1 & 0xf800 == 0xf000 and h2 & 0xd000 == 0xd000 and u16(o + 4) == 0x2800 \
+                and u16(o + 6) >> 8 == 0xd0:
+            imm = u16(o + 6) & 0xff
+            imm -= 0x100 if imm & 0x80 else 0
+            if o + 6 + 4 + imm * 2 == custom + 0x18:
+                found.append(o)
+    if len(found) != 1:
+        return "cursor check not found (%d matches)" % len(found)
+    m = found[0]
+    off_b = (custom + 0x18) - (m + 2 + 4)
+    b_instr = 0xe000 | ((off_b >> 1) & 0x7ff)
+    d[m:m + 8] = struct.pack('<HHHH', 0x2605, b_instr, 0xbf00, 0xbf00)  # movs r6,#5 ; b ; nop ; nop
+    for f in (pos, wheel):
+        d[f:f + 4] = b'\x00\x20\x70\x47'                                  # movs r0,#0 ; bx lr
+    return None
+
+if no_pointer == '1':
+    err = patch_pointer()
+    print("pointer: disabled" if err is None else "pointer: SKIPPED, " + err)
 open(dst, 'wb').write(d)
 PY
     [ $? -eq 0 ] || { log "patching failed/skipped, leaving stock lginput2 untouched"; return 1; }
